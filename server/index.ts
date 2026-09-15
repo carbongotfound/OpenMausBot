@@ -2486,7 +2486,7 @@ const roomHandoffs = new RoomHandoffs(join(DATA_DIR, "room-handoffs.json"), {
       };
       signal.addEventListener("abort", abort, { once: true });
       if (signal.aborted) { abort(); return; }
-      void startTurn(bot.id, resumed ? "Review the returned teammate results and continue the original request." : "Complete the addressed teammate request.", {
+      void startTurn(bot.id, resumed ? "Review the returned teammate results and continue the original request." : `Complete the addressed teammate request:\n\n${node.text}`, {
         threadId: node.threadId, cardContinuation: true, commsDepth: MAX_COMMS_DEPTH,
         unattended: isUnattended(bot.id, node.threadId),
         coordination: { id: node.id, resumed, settle: finish },
