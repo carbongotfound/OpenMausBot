@@ -408,12 +408,15 @@ const TOOLS = [
     description: "Ask existing OpenMausBot teammates for advice or assign concrete work. From normal chat every assignment you send a teammate continues your one standing conversation with that teammate, so they keep the context of what you asked before; from a room it defaults to this room. Use group_id from list_room_targets for a specific room. Name 1-4 bot_ids: they receive only your brief and use their own model, tools and permissions. Busy bots queue. They can consult their specialists; all results return here and resume you automatically. Include exact file paths, constraints and what must be verified. After sending all assignments, END your turn; do not poll or wait. On return, resolve tradeoffs, verify the requested outcome and request concrete corrections if necessary before giving one final answer. Do not send acknowledgements as new work.",
     inputSchema: { type: "object", additionalProperties: false, properties: {
       group_id: { type: "string", description: "Optional destination room. Omit for this room, or your standing conversation with each teammate when chatting directly." },
+      groupId: { type: "string", description: "CamelCase alias for group_id." },
       bot_ids: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4, uniqueItems: true },
+      botIds: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4, uniqueItems: true, description: "CamelCase alias for bot_ids." },
       message: { type: "string", minLength: 1, maxLength: 4000, description: "Self-contained question or task for these teammates. Send separate requests when responsibilities differ." },
       request_key: { type: "string", description: "A short unique assignment key. Reuse for an identical retry." },
+      requestKey: { type: "string", description: "CamelCase alias for request_key." },
       rework: { type: "boolean", description: "True only for concrete additional work from someone who already completed a request." },
       label: { type: "string", description: "Optional short name (one line, at most 60 characters) for this job. Used only when the teammate is still working on your previous assignment and this one therefore runs in its own thread beside your standing conversation." },
-    }, required: ["bot_ids", "message", "request_key"] },
+    }, required: ["message"] },
   },
   {
     name: "list_bots",
@@ -899,6 +902,15 @@ function jsonRecord(value: unknown): value is Json {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function aliasedArgument(args: Json, snakeCase: string, camelCase: string): { value: unknown; error?: string } {
+  const snakeValue = args[snakeCase];
+  const camelValue = args[camelCase];
+  if (snakeValue !== undefined && camelValue !== undefined && JSON.stringify(snakeValue) !== JSON.stringify(camelValue)) {
+    return { value: undefined, error: `Choose either ${snakeCase} or ${camelCase}; they disagree.` };
+  }
+  return { value: snakeValue ?? camelValue };
+}
+
 function routineAction(value: unknown): RoutineAction | null {
   return value === "update" || value === "pause" || value === "resume" || value === "run_now" || value === "delete"
     ? value
@@ -990,9 +1002,21 @@ async function callTool(name: string, args: Json): Promise<{ text: string; isErr
     return { text: JSON.stringify(r), ...(r.error ? { isError: true } : {}) };
   }
   if (name === "coordinate_bots") {
+    const group = aliasedArgument(args, "group_id", "groupId");
+    const bots = aliasedArgument(args, "bot_ids", "botIds");
+    const request = aliasedArgument(args, "request_key", "requestKey");
+    const conflict = group.error ?? bots.error ?? request.error;
+    if (conflict) return { text: conflict, isError: true };
+    if (!Array.isArray(bots.value) || bots.value.length === 0) {
+      return { text: "coordinate_bots needs bot_ids or botIds with at least one bot ID.", isError: true };
+    }
+    const message = typeof args.message === "string" ? args.message.trim() : "";
+    const requestKey = typeof request.value === "string" ? request.value.trim() : "";
+    if (!message) return { text: "coordinate_bots needs message.", isError: true };
+    if (!requestKey) return { text: "coordinate_bots needs request_key or requestKey.", isError: true };
     const r = await api("/api/internal/coordinate-bots", { method: "POST", body: JSON.stringify({
-      groupId: args.group_id, botIds: args.bot_ids, message: args.message,
-      requestKey: args.request_key, rework: args.rework, label: args.label,
+      groupId: group.value, botIds: bots.value, message,
+      requestKey, rework: args.rework, label: args.label,
     }) });
     return { text: JSON.stringify(r), ...(r.error ? { isError: true } : {}) };
   }
