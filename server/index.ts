@@ -14788,6 +14788,9 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
     // a Chrome for Testing, a one-time download), or ask how that is going.
     // One install at a time; the config frame's browserEngine tells the rest.
     if (method === "POST" && path === "/api/browser-engine/install") {
+      if (!/^application\/json\b/i.test(String(req.headers["content-type"] ?? ""))) {
+        return json(res, 415, { error: "content-type must be application/json" });
+      }
       if (!browserEngineInstall) {
         const status = browserEngineStatus();
         if (status.kind === "unavailable" && !status.installable) return json(res, 409, { error: status.reason });
